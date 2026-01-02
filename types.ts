@@ -6,6 +6,7 @@ export interface Player {
   name: string;
   isImpostor: boolean;
   votesReceived: number;
+  isEliminated: boolean;
 }
 
 export interface GameConfig {
@@ -20,7 +21,7 @@ export interface GameConfig {
   keepLastImpostors: boolean;   
 }
 
-export type GamePhase = 'HOME' | 'SETUP' | 'REVEAL' | 'DISCUSSION' | 'VOTE' | 'RESULTS';
+export type GamePhase = 'HOME' | 'SETUP' | 'REVEAL' | 'DISCUSSION' | 'VOTE' | 'ELIMINATION_RESULT' | 'RESULTS';
 
 export interface GameState {
   phase: GamePhase;
@@ -34,6 +35,7 @@ export interface GameState {
   isTimerRunning: boolean;
   voterIndex: number;
   startingPlayerId?: string; // ID del jugador que empieza el debate
+  lastEliminatedPlayer?: { id: string; name: string; wasImpostor: boolean };
   isCompleted?: boolean;
   lastSavedAt?: number;
   results: {

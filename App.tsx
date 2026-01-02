@@ -199,6 +199,7 @@ export default function App() {
         name,
         isImpostor: impostorIndices.has(idx),
         votesReceived: 0,
+        isEliminated: false,
       }));
 
       writeLastImpostors({
@@ -247,14 +248,41 @@ export default function App() {
   const handleFinalVote = (targetId: string) => {
     const selectedPlayer = gameState.players.find(p => p.id === targetId);
     if (!selectedPlayer) return;
-    const winners = selectedPlayer.isImpostor ? 'Inocentes' : 'Impostores';
-    if (winners === 'Inocentes') confetti();
+
+    const updatedPlayers = gameState.players.map(p =>
+      p.id === targetId ? { ...p, isEliminated: true } : p
+    );
+
+    const alivePlayers = updatedPlayers.filter(p => !p.isEliminated);
+    const aliveImpostors = alivePlayers.filter(p => p.isImpostor).length;
+    const aliveInnocents = alivePlayers.filter(p => !p.isImpostor).length;
+
+    let gameEnded = false;
+    let winners: 'Inocentes' | 'Impostores' | null = null;
+
+    if (selectedPlayer.isImpostor && aliveImpostors === 0) {
+      gameEnded = true;
+      winners = 'Inocentes';
+      confetti();
+    } else if (!selectedPlayer.isImpostor && aliveImpostors >= aliveInnocents) {
+      gameEnded = true;
+      winners = 'Impostores';
+    }
 
     setGameState(prev => ({
       ...prev,
-      phase: 'RESULTS',
-      isCompleted: true,
-      results: { winners, mostVotedId: targetId }
+      players: updatedPlayers,
+      lastEliminatedPlayer: {
+        id: selectedPlayer.id,
+        name: selectedPlayer.name,
+        wasImpostor: selectedPlayer.isImpostor
+      },
+      phase: 'ELIMINATION_RESULT',
+      isTimerRunning: false,
+      ...(gameEnded && {
+        isCompleted: true,
+        results: { winners: winners!, mostVotedId: targetId }
+      })
     }));
   };
 
@@ -479,18 +507,19 @@ export default function App() {
   };
 
   const renderDiscussion = () => {
-    const startingPlayer = gameState.players.find(p => p.id === gameState.startingPlayerId);
+    const alivePlayers = gameState.players.filter(p => !p.isEliminated);
+    const startingPlayer = alivePlayers.find(p => p.id === gameState.startingPlayerId);
     return (
       <div className="flex flex-col h-full overflow-hidden relative">
         <Header onHomeClick={() => setGameState(prev => ({ ...prev, phase: 'HOME' }))} onExitClick={() => setShowExitModal(true)} showExit />
-        
+
         {/* Overlay de quién empieza */}
         <AnimatePresence>
           {showStartOverlay && (
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.9 }} 
-              animate={{ opacity: 1, scale: 1 }} 
-              exit={{ opacity: 0, scale: 1.1 }} 
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 1.1 }}
               className="absolute inset-x-6 top-1/2 -translate-y-1/2 z-40 bg-white border-4 border-[#0B0B0B] p-8 rounded-3xl sticker-shadow text-center space-y-6"
             >
               <div className="mx-auto w-16 h-16 bg-[#FE70C8]/10 rounded-full flex items-center justify-center">
@@ -525,8 +554,8 @@ export default function App() {
             )}
           </div>
           <div className="mt-8 space-y-3">
-            <h3 className="text-[10px] font-black text-[#5F5E5E] uppercase tracking-widest mb-4">Jugadores</h3>
-            {gameState.players.map(p => (
+            <h3 className="text-[10px] font-black text-[#5F5E5E] uppercase tracking-widest mb-4">Jugadores Vivos ({alivePlayers.length})</h3>
+            {alivePlayers.map(p => (
               <div key={p.id} className={`bg-white p-4 rounded-2xl border-2 transition-all flex justify-between items-center ${p.id === gameState.startingPlayerId ? 'border-[#FE70C8] sticker-shadow-sm' : 'border-[#0B0B0B]/10'}`}>
                 <span className="font-bold text-[#0B0B0B] uppercase text-sm">{p.name}</span>
                 {p.id === gameState.startingPlayerId && <Mic size={16} className="text-[#FE70C8]" />}
@@ -544,24 +573,101 @@ export default function App() {
     );
   };
 
-  const renderVote = () => (
-    <div className="flex flex-col h-full overflow-y-auto">
-      <Header onHomeClick={() => setGameState(prev => ({ ...prev, phase: 'HOME' }))} onExitClick={() => setShowExitModal(true)} showExit />
-      <div className="px-6 py-8 space-y-8 pb-24 text-center">
-        <div className="mb-4 inline-flex p-5 bg-[#FE70C8]/10 rounded-full border-2 border-[#FE70C8]/20"><UserX size={40} className="text-[#FE70C8]" /></div>
-        <h2 className="text-3xl font-black text-[#0B0B0B] tracking-tighter uppercase">¿Quién es el traidor?</h2>
-        <div className="grid gap-3">{gameState.players.map(p => (
-          <button key={p.id} onClick={() => handleFinalVote(p.id)} className="group p-5 rounded-2xl bg-white border-2 border-[#0B0B0B] hover:bg-[#FE70C8] hover:text-white transition-all sticker-shadow-sm flex justify-between items-center active:scale-95">
-            <div className="flex items-center space-x-4">
-              <div className="w-10 h-10 rounded-xl bg-[#FE70C8]/10 flex items-center justify-center text-sm font-black group-hover:bg-white text-[#FE70C8]"> {p.name.charAt(0)} </div>
-              <span className="font-black text-xl tracking-tight uppercase">{p.name}</span>
-            </div>
-            <ChevronRight size={20} className="text-[#5F5E5E] group-hover:text-white" />
-          </button>
-        ))}</div>
+  const renderVote = () => {
+    const alivePlayers = gameState.players.filter(p => !p.isEliminated);
+    return (
+      <div className="flex flex-col h-full overflow-y-auto">
+        <Header onHomeClick={() => setGameState(prev => ({ ...prev, phase: 'HOME' }))} onExitClick={() => setShowExitModal(true)} showExit />
+        <div className="px-6 py-8 space-y-8 pb-24 text-center">
+          <div className="mb-4 inline-flex p-5 bg-[#FE70C8]/10 rounded-full border-2 border-[#FE70C8]/20"><UserX size={40} className="text-[#FE70C8]" /></div>
+          <h2 className="text-3xl font-black text-[#0B0B0B] tracking-tighter uppercase">¿Quién es el traidor?</h2>
+          <div className="grid gap-3">{alivePlayers.map(p => (
+            <button key={p.id} onClick={() => handleFinalVote(p.id)} className="group p-5 rounded-2xl bg-white border-2 border-[#0B0B0B] hover:bg-[#FE70C8] hover:text-white transition-all sticker-shadow-sm flex justify-between items-center active:scale-95">
+              <div className="flex items-center space-x-4">
+                <div className="w-10 h-10 rounded-xl bg-[#FE70C8]/10 flex items-center justify-center text-sm font-black group-hover:bg-white text-[#FE70C8]"> {p.name.charAt(0)} </div>
+                <span className="font-black text-xl tracking-tight uppercase">{p.name}</span>
+              </div>
+              <ChevronRight size={20} className="text-[#5F5E5E] group-hover:text-white" />
+            </button>
+          ))}</div>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
+
+  const renderEliminationResult = () => {
+    const eliminated = gameState.lastEliminatedPlayer;
+    if (!eliminated) return null;
+
+    const isGameOver = gameState.isCompleted;
+    const wasImpostor = eliminated.wasImpostor;
+
+    return (
+      <div className="flex flex-col h-full overflow-y-auto">
+        <Header onHomeClick={() => setGameState(prev => ({ ...prev, phase: 'HOME' }))} onExitClick={() => setShowExitModal(true)} showExit />
+        <div className="flex-1 flex flex-col items-center justify-center px-6 py-10">
+          <motion.div
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className={`w-full max-w-md p-8 rounded-3xl border-4 border-[#0B0B0B] sticker-shadow text-center space-y-6 ${
+              wasImpostor ? 'bg-gradient-to-br from-yellow-400 to-yellow-500' : 'bg-gradient-to-br from-red-500 to-red-600'
+            }`}
+          >
+            <div className="flex flex-col items-center space-y-4">
+              {wasImpostor ? (
+                <>
+                  <Trophy size={80} className="text-white" />
+                  <h2 className="text-4xl font-black text-white uppercase tracking-tighter leading-tight">
+                    ¡Era el<br/>Impostor!
+                  </h2>
+                  <div className="bg-white/20 backdrop-blur-sm px-6 py-3 rounded-2xl border-2 border-white/30">
+                    <p className="text-2xl font-black text-white uppercase tracking-tight">{eliminated.name}</p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <AlertTriangle size={80} className="text-white" />
+                  <h2 className="text-4xl font-black text-white uppercase tracking-tighter leading-tight">
+                    No era el<br/>Impostor
+                  </h2>
+                  <div className="bg-white/20 backdrop-blur-sm px-6 py-3 rounded-2xl border-2 border-white/30">
+                    <p className="text-2xl font-black text-white uppercase tracking-tight">{eliminated.name}</p>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="pt-6 border-t-2 border-white/20">
+              <Button
+                variant="secondary"
+                fullWidth
+                onClick={() => {
+                  if (isGameOver) {
+                    setGameState(prev => ({ ...prev, phase: 'RESULTS' }));
+                  } else {
+                    const alivePlayers = gameState.players.filter(p => !p.isEliminated);
+                    const randomIndex = Math.floor(Math.random() * alivePlayers.length);
+                    const starter = alivePlayers[randomIndex];
+                    setGameState(prev => ({
+                      ...prev,
+                      phase: 'DISCUSSION',
+                      startingPlayerId: starter.id,
+                      timeLeft: prev.config.discussionMinutes * 60,
+                      isTimerRunning: false
+                    }));
+                    setShowStartOverlay(true);
+                  }
+                }}
+              >
+                <ChevronRight size={20} />
+                <span>{isGameOver ? 'VER RESULTADOS' : 'CONTINUAR JUEGO'}</span>
+              </Button>
+            </div>
+          </motion.div>
+        </div>
+      </div>
+    );
+  };
 
   const renderResults = () => {
     const mostVoted = gameState.results?.mostVotedId ? gameState.players.find(p => p.id === gameState.results?.mostVotedId) : null;
@@ -598,6 +704,7 @@ export default function App() {
             {gameState.phase === 'REVEAL' && renderReveal()}
             {gameState.phase === 'DISCUSSION' && renderDiscussion()}
             {gameState.phase === 'VOTE' && renderVote()}
+            {gameState.phase === 'ELIMINATION_RESULT' && renderEliminationResult()}
             {gameState.phase === 'RESULTS' && renderResults()}
           </motion.div>
         </AnimatePresence>
