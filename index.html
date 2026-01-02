@@ -19,9 +19,11 @@
             font-family: 'Plus Jakarta Sans', sans-serif;
             background-color: #FFFFFF;
             color: var(--carpaneta-black);
-            overflow: hidden;
-            height: 100dvh;
+            min-height: 100dvh;
             width: 100vw;
+            overflow-x: hidden;
+            overflow-y: auto;
+            padding-bottom: env(safe-area-inset-bottom);
             -webkit-tap-highlight-color: transparent;
         }
         .reveal-gradient {

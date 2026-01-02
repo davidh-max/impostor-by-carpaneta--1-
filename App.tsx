@@ -694,7 +694,7 @@ export default function App() {
   };
 
   return (
-    <div className="max-w-md mx-auto h-screen bg-white flex flex-col shadow-2xl relative overflow-hidden">
+    <div className="max-w-md mx-auto min-h-[100dvh] bg-white flex flex-col shadow-2xl relative overflow-hidden pb-[env(safe-area-inset-bottom)]">
       <div className="absolute inset-0 bg-pattern pointer-events-none"></div>
       <main className="flex-1 z-10 overflow-hidden flex flex-col">
         <AnimatePresence mode="wait">
